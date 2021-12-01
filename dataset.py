@@ -14,7 +14,6 @@ class Dataset():
     self.image2 = df.image_2
     self.caption = df.impression
     self.input_size = input_size #tuple ex: (512,512)
-    self.augmentation = augmentation
     self.vocab=vocab
 
   def __getitem__(self,i):
@@ -28,23 +27,16 @@ class Dataset():
     if image2.any()==None:
       print("%i , %s image sent null value"%(i,self.image2[i]))
 
-    ### How should we merge image1 and image2 to image?
+    ### How should we merge image1 and image2 to 1 image?
     image=image1
+    ###    
 
     caption = []
+    tokens=self.caption[i].split()
     caption.append(self.vocab('<start>'))
-    caption.extend([self.vocab(token) for token in self.caption[i]])
+    caption.extend([self.vocab(token) for token in tokens])
     caption.append(self.vocab('<end>'))
     caption = torch.Tensor(caption)
-
-    if self.augmentation: #we will not apply augmentation that crops the image 
-          a = np.random.uniform()
-          if a<0.333:
-              image1 = self.aug1.augment_image(image1)
-              image2 = self.aug1.augment_image(image2)
-          elif a<0.667:
-              image1 = self.aug2.augment_image(image1)
-              image2 = self.aug2.augment_image(image2)
 
     return image,caption
 

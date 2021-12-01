@@ -44,8 +44,6 @@ batch_size = 32
 decoder_lr = 0.0004
 
 # if both are false them model = baseline
-
-glove_model = False
 bert_model = False
 
 from_checkpoint = True
@@ -93,7 +91,7 @@ criterion = nn.CrossEntropyLoss().to(device)
 if from_checkpoint:
 
     encoder = Encoder(ckpt_path="ChexNet/model.pth.tar").to(device)
-    decoder = Decoder(vocab, vocab_size=len(vocab),use_glove=glove_model, use_bert=bert_model).to(device)
+    decoder = Decoder(vocab, use_bert=bert_model).to(device)
 
     if torch.cuda.is_available():
         if bert_model:
@@ -119,8 +117,8 @@ if from_checkpoint:
     decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
     decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
 else:
-    encoder = Encoder().to(device)
-    decoder = Decoder(vocab_size=len(vocab),use_glove=glove_model, use_bert=bert_model).to(device)
+    encoder = Encoder(ckpt_path="ChexNet/model.pth.tar").to(device)
+    decoder = Decoder(vocab, use_bert=bert_model).to(device)
     decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
 
 ###############
