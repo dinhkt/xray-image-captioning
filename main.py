@@ -25,32 +25,24 @@ from model import Encoder,Decoder
 from dataset import Dataset
 from build_vocab import Vocabulary
 import torchvision.transforms as transforms
-###################
-# START Parameters
-###################
+import argparse
+
+
+def args_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode',type=str,required=True)
+    parser.add_argument('--use_bert',type=bool,default=False)
+    parser.add_argument('--from_checkpoint',type=bool,default=False)
+    parser.add_argument('--n_epochs',type=int,default=4)
+    parser.add_argument('--batch_size',type=int,default=32)
+    args = parser.parse_args()
+    return args
+
 # vocab indices
 PAD = 0
 START = 1
 END = 2
 UNK = 3
-
-# hyperparams
-grad_clip = 5.
-num_epochs = 4
-batch_size = 32 
-decoder_lr = 0.0004
-
-# if both are false them model = baseline
-bert_model = False
-
-from_checkpoint = False
-train_model = True
-valid_model = False
-
-###################
-# END Parameters
-###################
-
 # loss
 class loss_obj(object):
     def __init__(self):
@@ -63,61 +55,14 @@ class loss_obj(object):
         self.count += n
         self.avg = self.sum / self.count
 
-# Device configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# Load vocabulary
-with open('dataset/vocab.pkl', 'rb') as f:
-    vocab = pickle.load(f)
-
-# load data
-transforms_ = transforms.Compose([transforms.ToTensor(),
-                transforms.Resize(512), 
-                transforms.RandomHorizontalFlip(),
-                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) ])
-
-train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_)
-val_dataset=Dataset(df_path="dataset/df_val.pkl",vocab=vocab,transform=transforms_)
-
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1,shuffle=False)
-val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1,shuffle=False)
-
-#############
-# Init model
-#############
-
-criterion = nn.CrossEntropyLoss().to(device)
-
-if from_checkpoint:
-
-    encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-    decoder = Decoder(vocab, use_bert=bert_model).to(device)
-
-    if bert_model:
-        print('Pre-Trained BERT Model')
-        encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
-        decoder_checkpoint = torch.load('./checkpoints/decoder_bert')
-    else:
-        print('Pre-Trained Baseline Model')
-        encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
-        decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
-
-    encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
-    decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
-    decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
-    decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
-else:
-    encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-    decoder = Decoder(vocab, use_bert=bert_model).to(device)
-    decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
 
 ###############
 # Train model
 ###############
 
-def train():
+def train(args,encoder,decoder,train_loader,criterion):
     print("Started training...")
-    for epoch in tqdm(range(num_epochs)):
+    for epoch in tqdm(range(args.n_epochs)):
         decoder.train()
         encoder.train()
         losses = loss_obj()
@@ -149,31 +94,6 @@ def train():
 
             losses.update(loss.item(), sum(decode_lengths))
 
-            # save model each 100 batches
-            if i%5000==0 and i!=0:
-                print('epoch '+str(epoch+1)+'/4 ,Batch '+str(i)+'/'+str(num_batches)+' loss:'+str(losses.avg))
-                
-                 # adjust learning rate (create condition for this)
-                for param_group in decoder_optimizer.param_groups:
-                    param_group['lr'] = param_group['lr'] * 0.8
-
-                print('saving model...')
-
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': decoder.state_dict(),
-                    'optimizer_state_dict': decoder_optimizer.state_dict(),
-                    'loss': loss,
-                    }, './checkpoints/decoder_mid')
-
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': encoder.state_dict(),
-                    'loss': loss,
-                    }, './checkpoints/encode_mid')
-
-                print('model saved')
-
         torch.save({
             'epoch': epoch,
             'model_state_dict': decoder.state_dict(),
@@ -187,8 +107,23 @@ def train():
             'loss': loss,
             }, './checkpoints/encoder_epoch'+str(epoch+1))
 
-        print('epoch checkpoint saved')
+        print('epoch {} checkpoint saved'.format(epoch))
 
+    if args.use_bert==True:
+        model_type="bert"
+    else:
+        model_type="baseline"
+    torch.save({
+        'model_state_dict': decoder.state_dict(),
+        'optimizer_state_dict': decoder_optimizer.state_dict(),
+        'loss': loss,
+        }, './checkpoints/decoder_'+model_type)
+
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': encoder.state_dict(),
+        'loss': loss,
+        }, './checkpoints/encoder_'+model_type)
     print("Completed training...")  
 
 #################
@@ -246,7 +181,7 @@ def print_sample(hypotheses, references, test_references,imgs, alphas, k, show_a
     #     plt.show()
 
 
-def validate():
+def validate(args,encoder,decoder,val_loader):
 
     references = [] 
     test_references = []
@@ -260,7 +195,6 @@ def validate():
 
     losses = loss_obj()
 
-    num_batches = len(val_loader)
     # Batches
     for i, (img1s,img2s, caps,cap_lens) in enumerate(tqdm(val_loader)):
 
@@ -309,12 +243,59 @@ def validate():
     print("Completed validation...")
     print_sample(hypotheses, references, test_references, all_imgs, all_alphas,1,False, losses)
 
-######################
-# Run training/validation
-######################
 
-if train_model:
-    train()
+if __name__=="__main__":
+    args = args_parser()
+    # Device configuration
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # hyperparams
+    grad_clip = 5.
+    decoder_lr = 0.0004
 
-if valid_model:
-    validate()
+    # Load vocabulary
+    with open('dataset/vocab.pkl', 'rb') as f:
+        vocab = pickle.load(f)
+    # load data
+    transforms_ = transforms.Compose([transforms.ToTensor(),
+                    transforms.Resize([512,512]), 
+                    transforms.RandomHorizontalFlip(),
+                    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) ])
+
+    train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
+    val_dataset=Dataset(df_path="dataset/df_val.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=False)
+    val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=False)
+
+    criterion = nn.CrossEntropyLoss().to(device)
+
+    ### Init model
+    if args.from_checkpoint:
+
+        encoder = Encoder(ckpt_path="model.pth.tar").to(device)
+        decoder = Decoder(vocab, use_bert=args.use_bert).to(device)
+
+        if args.use_bert:
+            print('Pre-Trained BERT Model')
+            encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
+            decoder_checkpoint = torch.load('./checkpoints/decoder_bert')
+        else:
+            print('Pre-Trained Baseline Model')
+            encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
+            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
+
+        encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
+        decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
+        decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
+        decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
+    else:
+        encoder = Encoder(ckpt_path="model.pth.tar").to(device)
+        decoder = Decoder(vocab, use_bert=args.use_bert,device=device).to(device)
+        decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
+    
+    if args.mode=="train":
+        train(args,encoder,decoder,train_loader,criterion)
+    elif args.mode=="val":
+        validate(args,encoder,decoder,val_loader)
+    else:
+        assert("mode should be train or val")

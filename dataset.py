@@ -7,7 +7,7 @@ from PIL import Image
 
 class Dataset():
   #here we will get the images converted to vector form and the corresponding captions
-  def __init__(self,df_path,transform,vocab): 
+  def __init__(self,df_path,transform,vocab,max_cap_len): 
     """
     df  = dataframe containing image_1,image_2 and impression
     """
@@ -17,6 +17,7 @@ class Dataset():
     self.caption = list(df.impression)
     self.transform = transform
     self.vocab=vocab
+    self.max_cap_len=max_cap_len
 
   def __getitem__(self,i):
     #gets the datapoint at i th index, we will extract the feature vectors of images after resizing the image  and apply augmentation
@@ -27,7 +28,12 @@ class Dataset():
     caption = []
     tokens=self.caption[i].split()
     caption.append(self.vocab('<start>'))
-    caption.extend([self.vocab(token) for token in tokens])
+    for token in tokens:
+      caption.append(self.vocab(token))
+      if len(caption) == self.max_cap_len-1:
+        break
+    while len(caption) < self.max_cap_len-1:
+      caption.append(self.vocab('<pad>'))
     caption.append(self.vocab('<end>'))
     caption = torch.LongTensor(caption)
 

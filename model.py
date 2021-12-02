@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from chexnet import DenseNet121
 from collections import OrderedDict
+from pytorch_pretrained_bert import BertTokenizer, BertModel
 
 # vocab indices
 PAD = 0
@@ -41,8 +42,7 @@ class Encoder(nn.Module):
 # Attention Decoder
 ####################
 class Decoder(nn.Module):
-
-    def __init__(self, vocab, use_bert=False):
+    def __init__(self, vocab,device, use_bert=False ):
         super(Decoder, self).__init__()
         self.encoder_dim = 2048
         self.attention_dim = 512
@@ -76,7 +76,7 @@ class Decoder(nn.Module):
         # init variables
         self.fc.bias.data.fill_(0)
         self.fc.weight.data.uniform_(-0.1, 0.1)
-
+        self.device=device
         if not use_bert:
             self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
             self.embedding.weight.data.uniform_(-0.1, 0.1)
@@ -84,12 +84,12 @@ class Decoder(nn.Module):
                 p.requires_grad = True
 
         ### Using bio bert here
-        # else:
-        #     # Load pre-trained model tokenizer (vocabulary)
-        #     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        #     # Load pre-trained model (weights)
-        #     BertModel = BertModel.from_pretrained('bert-base-uncased').to(device)
-        #     BertModel.eval()
+        else:
+            # Load pre-trained model tokenizer (vocabulary)
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+            # Load pre-trained model (weights)
+            self.bert_model = BertModel.from_pretrained('bert-base-uncased').to(self.device)
+            self.bert_model.eval()
 
     def forward(self, encoder_out, encoded_captions, caption_lengths):    
         batch_size = encoder_out.size(0)
@@ -106,68 +106,68 @@ class Decoder(nn.Module):
             embeddings = self.embedding(encoded_captions)
 
         ### using bio bert here
-        # elif self.use_bert:
-        #     embeddings = []
-        #     for cap_idx in encoded_captions:
+        elif self.use_bert:
+            embeddings = []
+            for cap_idx in encoded_captions:
                 
-        #         # padd caption to correct size
-        #         while len(cap_idx) < max_dec_len:
-        #             cap_idx.append(PAD)
+                # padd caption to correct size
+                while len(cap_idx) < max_dec_len:
+                    cap_idx.append(PAD)
                     
-        #         cap = ' '.join([self.vocab.idx2word[word_idx.item()] for word_idx in cap_idx])
-        #         cap = u'[CLS] '+cap
+                cap = ' '.join([self.vocab.idx2word[word_idx.item()] for word_idx in cap_idx])
+                cap = u'[CLS] '+cap
                 
-        #         tokenized_cap = tokenizer.tokenize(cap)                
-        #         indexed_tokens = tokenizer.convert_tokens_to_ids(tokenized_cap)
-        #         tokens_tensor = torch.tensor([indexed_tokens]).to(device)
+                tokenized_cap = self.tokenizer.tokenize(cap)                
+                indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokenized_cap)
+                tokens_tensor = torch.tensor([indexed_tokens]).to(self.device)
 
-        #         with torch.no_grad():
-        #             encoded_layers, _ = BertModel(tokens_tensor)
+                with torch.no_grad():
+                    encoded_layers, _ = self.bert_model(tokens_tensor)
 
-        #         bert_embedding = encoded_layers[11].squeeze(0)
+                bert_embedding = encoded_layers[11].squeeze(0)
                 
-        #         split_cap = cap.split()
-        #         tokens_embedding = []
-        #         j = 0
+                split_cap = cap.split()
+                tokens_embedding = []
+                j = 0
 
-        #         for full_token in split_cap:
-        #             curr_token = ''
-        #             x = 0
-        #             for i,_ in enumerate(tokenized_cap[1:]): # disregard CLS
-        #                 token = tokenized_cap[i+j]
-        #                 piece_embedding = bert_embedding[i+j]
+                for full_token in split_cap:
+                    curr_token = ''
+                    x = 0
+                    for i,_ in enumerate(tokenized_cap[1:]): # disregard CLS
+                        token = tokenized_cap[i+j]
+                        piece_embedding = bert_embedding[i+j]
                         
-        #                 # full token
-        #                 if token == full_token and curr_token == '' :
-        #                     tokens_embedding.append(piece_embedding)
-        #                     j += 1
-        #                     break
-        #                 else: # partial token
-        #                     x += 1
+                        # full token
+                        if token == full_token and curr_token == '' :
+                            tokens_embedding.append(piece_embedding)
+                            j += 1
+                            break
+                        else: # partial token
+                            x += 1
                             
-        #                     if curr_token == '':
-        #                         tokens_embedding.append(piece_embedding)
-        #                         curr_token += token.replace('#', '')
-        #                     else:
-        #                         tokens_embedding[-1] = torch.add(tokens_embedding[-1], piece_embedding)
-        #                         curr_token += token.replace('#', '')
+                            if curr_token == '':
+                                tokens_embedding.append(piece_embedding)
+                                curr_token += token.replace('#', '')
+                            else:
+                                tokens_embedding[-1] = torch.add(tokens_embedding[-1], piece_embedding)
+                                curr_token += token.replace('#', '')
                                 
-        #                         if curr_token == full_token: # end of partial
-        #                             j += x
-        #                             break                            
+                                if curr_token == full_token: # end of partial
+                                    j += x
+                                    break                            
 
-        #         cap_embedding = torch.stack(tokens_embedding)
-        #         embeddings.append(cap_embedding)
+                cap_embedding = torch.stack(tokens_embedding)
+                embeddings.append(cap_embedding)
   
-        #     embeddings = torch.stack(embeddings)
+            embeddings = torch.stack(embeddings)
 
         # init hidden state
         avg_enc_out = encoder_out.mean(dim=1)
         h = self.h_lin(avg_enc_out)
         c = self.c_lin(avg_enc_out)
 
-        predictions = torch.zeros(batch_size, max_dec_len, vocab_size,device=encoder_out.device)
-        alphas = torch.zeros(batch_size, max_dec_len, num_pixels,device=encoder_out.device)
+        predictions = torch.zeros(batch_size, max_dec_len, vocab_size,device=self.device)
+        alphas = torch.zeros(batch_size, max_dec_len, num_pixels,device=self.device)
 
         for t in range(max(dec_len)):
             batch_size_t = sum([l > t for l in dec_len ])
