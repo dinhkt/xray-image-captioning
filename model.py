@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
-from CheXNet.model import DenseNet121
+from chexnet import DenseNet121
+from collections import OrderedDict
 
 # vocab indices
 PAD = 0
 START = 1
 END = 2
 UNK = 3
-
 #####################
 # Encoder ChexNet
 #####################
@@ -16,13 +16,24 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.chexnet = DenseNet121()
         checkpoint = torch.load(ckpt_path)
-        self.chexnet.load_state_dict(checkpoint['state_dict'])
-        self.conv_layers= self.chexnet.features
+        fixed_state_dict = OrderedDict()
+        for k, v in checkpoint["state_dict"].items():
+            k = k.replace("module.", "") # removing ‘module.’ from key
+            k = k.replace( '.norm.1', '.norm1')
+            k = k.replace( '.conv.1', '.conv1')
+            k = k.replace( '.norm.2', '.norm2')
+            k = k.replace( '.conv.2', '.conv2')    
+            fixed_state_dict[k] = v  
+        self.chexnet.load_state_dict(fixed_state_dict)
+        self.conv_layers= self.chexnet.densenet121.features
         self.adaptive_pool = nn.AdaptiveAvgPool2d((14, 14))
 
-    def forward(self, images):
-        out = self.adaptive_pool(self.conv_layers(images))
-        # batch_size, img size, imgs size, 1024
+    def forward(self, image1,image2):
+        out1 = self.adaptive_pool(self.conv_layers(image1))
+        out2 = self.adaptive_pool(self.conv_layers(image2))
+        # concat 2 images in the channel dimension
+        out = torch.cat((out1,out2),dim=1) 
+        # batch_size, img size, imgs size, 2048
         out = out.permute(0, 2, 3, 1)
         return out
 
@@ -33,7 +44,7 @@ class Decoder(nn.Module):
 
     def __init__(self, vocab, use_bert=False):
         super(Decoder, self).__init__()
-        self.encoder_dim = 1024
+        self.encoder_dim = 2048
         self.attention_dim = 512
         self.use_bert = use_bert
         self.vocab=vocab
@@ -47,7 +58,7 @@ class Decoder(nn.Module):
         self.dropout = 0.5
         
         # soft attention
-        self.enc_att = nn.Linear(1024, 512)
+        self.enc_att = nn.Linear(2048, 512)
         self.dec_att = nn.Linear(512, 512)
         self.att = nn.Linear(512, 1)
         self.relu = nn.ReLU()
@@ -67,9 +78,8 @@ class Decoder(nn.Module):
         self.fc.weight.data.uniform_(-0.1, 0.1)
 
         if not use_bert:
-            self.embedding = nn.Embedding(vocab_size, self.embed_dim)
+            self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
             self.embedding.weight.data.uniform_(-0.1, 0.1)
-            # always fine-tune embeddings (even with GloVe)
             for p in self.embedding.parameters():
                 p.requires_grad = True
 
@@ -156,8 +166,8 @@ class Decoder(nn.Module):
         h = self.h_lin(avg_enc_out)
         c = self.c_lin(avg_enc_out)
 
-        predictions = torch.zeros(batch_size, max_dec_len, vocab_size)
-        alphas = torch.zeros(batch_size, max_dec_len, num_pixels)
+        predictions = torch.zeros(batch_size, max_dec_len, vocab_size,device=encoder_out.device)
+        alphas = torch.zeros(batch_size, max_dec_len, num_pixels,device=encoder_out.device)
 
         for t in range(max(dec_len)):
             batch_size_t = sum([l > t for l in dec_len ])
@@ -180,5 +190,5 @@ class Decoder(nn.Module):
             predictions[:batch_size_t, t, :] = preds
             alphas[:batch_size_t, t, :] = alpha
             
-        # preds, sorted capts, dec lens, attention wieghts
+        # preds, sorted capts, dec lens, attention weights
         return predictions, encoded_captions, dec_len, alphas

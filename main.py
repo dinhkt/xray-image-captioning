@@ -16,18 +16,15 @@ import pickle
 import torch.nn as nn
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence
-from data_loader import get_loader
 from nltk.translate.bleu_score import corpus_bleu
 from tqdm import tqdm
-from torch.autograd import Variable
-import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-import skimage.transform
 from PIL import Image
 from model import Encoder,Decoder
 from dataset import Dataset
-
+from build_vocab import Vocabulary
+import torchvision.transforms as transforms
 ###################
 # START Parameters
 ###################
@@ -46,9 +43,9 @@ decoder_lr = 0.0004
 # if both are false them model = baseline
 bert_model = False
 
-from_checkpoint = True
-train_model = False
-valid_model = True
+from_checkpoint = False
+train_model = True
+valid_model = False
 
 ###################
 # END Parameters
@@ -73,14 +70,17 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 with open('dataset/vocab.pkl', 'rb') as f:
     vocab = pickle.load(f)
 
-
-### Redefine dataloader here
 # load data
-train_dataset=Dataset(df_path="dataset/df_train.pkl",input_size=(512,512),vocab=vocab)
-val_dataset=Dataset(df_path="dataset/df_val.pkl",input_size=(512,512),vocab=vocab)
+transforms_ = transforms.Compose([transforms.ToTensor(),
+                transforms.Resize(512), 
+                transforms.RandomHorizontalFlip(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) ])
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32,shuffle=True)
-val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32,shuffle=True)
+train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_)
+val_dataset=Dataset(df_path="dataset/df_val.pkl",vocab=vocab,transform=transforms_)
+
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1,shuffle=False)
+val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1,shuffle=False)
 
 #############
 # Init model
@@ -90,34 +90,24 @@ criterion = nn.CrossEntropyLoss().to(device)
 
 if from_checkpoint:
 
-    encoder = Encoder(ckpt_path="ChexNet/model.pth.tar").to(device)
+    encoder = Encoder(ckpt_path="model.pth.tar").to(device)
     decoder = Decoder(vocab, use_bert=bert_model).to(device)
 
-    if torch.cuda.is_available():
-        if bert_model:
-            print('Pre-Trained BERT Model')
-            encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_bert')
-        else:
-            print('Pre-Trained Baseline Model')
-            encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
+    if bert_model:
+        print('Pre-Trained BERT Model')
+        encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
+        decoder_checkpoint = torch.load('./checkpoints/decoder_bert')
     else:
-        if bert_model:
-            print('Pre-Trained BERT Model')
-            encoder_checkpoint = torch.load('./checkpoints/encoder_bert', map_location='cpu')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_bert', map_location='cpu')
-        else:
-            print('Pre-Trained Baseline Model')
-            encoder_checkpoint = torch.load('./checkpoints/encoder_baseline', map_location='cpu')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline', map_location='cpu')
+        print('Pre-Trained Baseline Model')
+        encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
+        decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
 
     encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
     decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
     decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
     decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
 else:
-    encoder = Encoder(ckpt_path="ChexNet/model.pth.tar").to(device)
+    encoder = Encoder(ckpt_path="model.pth.tar").to(device)
     decoder = Decoder(vocab, use_bert=bert_model).to(device)
     decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
 
@@ -133,17 +123,15 @@ def train():
         losses = loss_obj()
         num_batches = len(train_loader)
 
-        for i, (imgs, caps) in enumerate(tqdm(train_loader)):
+        for i, (img1s,img2s, caps,cap_lens) in enumerate(tqdm(train_loader)):
 
-            imgs = encoder(imgs.to(device))
+            imgs = encoder(img1s.to(device),img2s.to(device))
             caps = caps.to(device)
 
-            scores, caps_sorted, decode_lengths, alphas = decoder(imgs, caps)
+            scores, caps_sorted, decode_lengths, alphas = decoder(imgs, caps,cap_lens)
             scores = pack_padded_sequence(scores, decode_lengths, batch_first=True)[0]
-
             targets = caps_sorted[:, 1:]
             targets = pack_padded_sequence(targets, decode_lengths, batch_first=True)[0]
-
             loss = criterion(scores, targets).to(device)
 
             loss += ((1. - alphas.sum(dim=1)) ** 2).mean()
@@ -232,30 +220,30 @@ def print_sample(hypotheses, references, test_references,imgs, alphas, k, show_a
     print('Hypotheses: '+" ".join(hyp_sentence))
     print('References: '+" ".join(ref_sentence))
         
-    img = imgs[0][k] 
-    imageio.imwrite('img.jpg', img)
+    # img = imgs[0][k] 
+    # imageio.imwrite('img.jpg', img)
   
-    if show_att:
-        image = Image.open('img.jpg')
-        image = image.resize([img_dim, img_dim], Image.LANCZOS)
-        for t in range(len(hyp_sentence)):
+    # if show_att:
+    #     image = Image.open('img.jpg')
+    #     image = image.resize([img_dim, img_dim], Image.LANCZOS)
+    #     for t in range(len(hyp_sentence)):
 
-            plt.subplot(np.ceil(len(hyp_sentence) / 5.), 5, t + 1)
+    #         plt.subplot(np.ceil(len(hyp_sentence) / 5.), 5, t + 1)
 
-            plt.text(0, 1, '%s' % (hyp_sentence[t]), color='black', backgroundcolor='white', fontsize=12)
-            plt.imshow(image)
-            current_alpha = alphas[0][t, :].detach().numpy()
-            alpha = skimage.transform.resize(current_alpha, [img_dim, img_dim])
-            if t == 0:
-                plt.imshow(alpha, alpha=0)
-            else:
-                plt.imshow(alpha, alpha=0.7)
-            plt.axis('off')
-    else:
-        img = imageio.imread('img.jpg')
-        plt.imshow(img)
-        plt.axis('off')
-        plt.show()
+    #         plt.text(0, 1, '%s' % (hyp_sentence[t]), color='black', backgroundcolor='white', fontsize=12)
+    #         plt.imshow(image)
+    #         current_alpha = alphas[0][t, :].detach().numpy()
+    #         alpha = skimage.transform.resize(current_alpha, [img_dim, img_dim])
+    #         if t == 0:
+    #             plt.imshow(alpha, alpha=0)
+    #         else:
+    #             plt.imshow(alpha, alpha=0.7)
+    #         plt.axis('off')
+    # else:
+    #     img = imageio.imread('img.jpg')
+    #     plt.imshow(img)
+    #     plt.axis('off')
+    #     plt.show()
 
 
 def validate():
@@ -274,16 +262,16 @@ def validate():
 
     num_batches = len(val_loader)
     # Batches
-    for i, (imgs, caps) in enumerate(tqdm(val_loader)):
+    for i, (img1s,img2s, caps,cap_lens) in enumerate(tqdm(val_loader)):
 
-        imgs_jpg = imgs.numpy() 
+        imgs_jpg = img1s.numpy() 
         imgs_jpg = np.swapaxes(np.swapaxes(imgs_jpg, 1, 3), 1, 2)
         
         # Forward prop.
-        imgs = encoder(imgs.to(device))
+        imgs = encoder(img1s.to(device),img2s.to(device))
         caps = caps.to(device)
 
-        scores, caps_sorted, decode_lengths, alphas = decoder(imgs, caps)
+        scores, caps_sorted, decode_lengths, alphas = decoder(imgs, caps,cap_lens)
         targets = caps_sorted[:, 1:]
 
         # Remove timesteps that we didn't decode at, or are pads
