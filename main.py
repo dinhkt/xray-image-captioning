@@ -263,8 +263,8 @@ if __name__=="__main__":
     train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
     val_dataset=Dataset(df_path="dataset/df_val.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=False)
-    val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size,shuffle=False)
 
     criterion = nn.CrossEntropyLoss().to(device)
 
