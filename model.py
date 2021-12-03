@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 from chexnet import DenseNet121
 from collections import OrderedDict
-from pytorch_pretrained_bert import BertTokenizer, BertModel
-
+from transformers import  AutoTokenizer,AutoModel
 # vocab indices
 PAD = 0
 START = 1
@@ -27,6 +26,8 @@ class Encoder(nn.Module):
             fixed_state_dict[k] = v  
         self.chexnet.load_state_dict(fixed_state_dict)
         self.conv_layers= self.chexnet.densenet121.features
+        for param in self.conv_layers.parameters():
+            param.requires_grad = False
         self.adaptive_pool = nn.AdaptiveAvgPool2d((14, 14))
 
     def forward(self, image1,image2):
@@ -86,9 +87,9 @@ class Decoder(nn.Module):
         ### Using bio bert here
         else:
             # Load pre-trained model tokenizer (vocabulary)
-            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+            self.tokenizer = AutoTokenizer.from_pretrained('dmis-lab/biobert-base-cased-v1.1')
             # Load pre-trained model (weights)
-            self.bert_model = BertModel.from_pretrained('bert-base-uncased').to(self.device)
+            self.bert_model = AutoModel.from_pretrained('dmis-lab/biobert-base-cased-v1.1').to(self.device)
             self.bert_model.eval()
 
     def forward(self, encoder_out, encoded_captions, caption_lengths):    
@@ -122,9 +123,9 @@ class Decoder(nn.Module):
                 tokens_tensor = torch.tensor([indexed_tokens]).to(self.device)
 
                 with torch.no_grad():
-                    encoded_layers, _ = self.bert_model(tokens_tensor)
+                    output=self.bert_model(tokens_tensor)
 
-                bert_embedding = encoded_layers[11].squeeze(0)
+                bert_embedding = output['last_hidden_state'].squeeze(0)
                 
                 split_cap = cap.split()
                 tokens_embedding = []

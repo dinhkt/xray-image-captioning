@@ -60,13 +60,12 @@ class loss_obj(object):
 # Train model
 ###############
 
-def train(args,encoder,decoder,train_loader,criterion):
+def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
     print("Started training...")
     for epoch in tqdm(range(args.n_epochs)):
         decoder.train()
-        encoder.train()
+        encoder.eval() # encoder doesn't need training
         losses = loss_obj()
-        num_batches = len(train_loader)
 
         for i, (img1s,img2s, caps,cap_lens) in enumerate(tqdm(train_loader)):
 
@@ -130,7 +129,7 @@ def train(args,encoder,decoder,train_loader,criterion):
 # Validate model
 #################
 
-def print_sample(hypotheses, references, test_references,imgs, alphas, k, show_att, losses):
+def print_sample(hypotheses, references, test_references, k, losses):
     bleu_1 = corpus_bleu(references, hypotheses, weights=(1, 0, 0, 0))
     bleu_2 = corpus_bleu(references, hypotheses, weights=(0, 1, 0, 0))
     bleu_3 = corpus_bleu(references, hypotheses, weights=(0, 0, 1, 0))
@@ -142,7 +141,7 @@ def print_sample(hypotheses, references, test_references,imgs, alphas, k, show_a
     print("BLEU-3: "+str(bleu_3))
     print("BLEU-4: "+str(bleu_4))
 
-    img_dim = 336 # 14*24
+    #img_dim = 336 # 14*24
     
     hyp_sentence = []
     for word_idx in hypotheses[k]:
@@ -181,13 +180,13 @@ def print_sample(hypotheses, references, test_references,imgs, alphas, k, show_a
     #     plt.show()
 
 
-def validate(args,encoder,decoder,val_loader):
+def validate(args,encoder,decoder,val_loader,criterion):
 
     references = [] 
     test_references = []
     hypotheses = [] 
-    all_imgs = []
-    all_alphas = []
+    # all_imgs = []
+    # all_alphas = []
 
     print("Started validation...")
     decoder.eval()
@@ -198,8 +197,8 @@ def validate(args,encoder,decoder,val_loader):
     # Batches
     for i, (img1s,img2s, caps,cap_lens) in enumerate(tqdm(val_loader)):
 
-        imgs_jpg = img1s.numpy() 
-        imgs_jpg = np.swapaxes(np.swapaxes(imgs_jpg, 1, 3), 1, 2)
+        # imgs_jpg = img1s.numpy() 
+        # imgs_jpg = np.swapaxes(np.swapaxes(imgs_jpg, 1, 3), 1, 2)
         
         # Forward prop.
         imgs = encoder(img1s.to(device),img2s.to(device))
@@ -236,12 +235,12 @@ def validate(args,encoder,decoder,val_loader):
         preds = temp_preds
         hypotheses.extend(preds)
         
-        if i == 0:
-            all_alphas.append(alphas)
-            all_imgs.append(imgs_jpg)
+        # if i == 0:
+        #     all_alphas.append(alphas)
+        #     all_imgs.append(imgs_jpg)
 
     print("Completed validation...")
-    print_sample(hypotheses, references, test_references, all_imgs, all_alphas,1,False, losses)
+    print_sample(hypotheses, references, test_references,1, losses)
 
 
 if __name__=="__main__":
@@ -294,8 +293,8 @@ if __name__=="__main__":
         decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
     
     if args.mode=="train":
-        train(args,encoder,decoder,train_loader,criterion)
+        train(args,encoder,decoder,train_loader,criterion,decoder_optimizer)
     elif args.mode=="val":
-        validate(args,encoder,decoder,val_loader)
+        validate(args,encoder,decoder,val_loader,criterion)
     else:
         assert("mode should be train or val")
