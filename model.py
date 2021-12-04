@@ -122,8 +122,11 @@ class Decoder(nn.Module):
                 with torch.no_grad():
                     output = self.bert_model(input_ids, attention_mask=attention_mask)
 
-                bert_embedding = output['last_hidden_state'].squeeze(0)
-                
+                bert_embedding_full = output['last_hidden_state'].squeeze()
+                bert_embedding=bert_embedding_full[1:-1]
+                cls_vec=bert_embedding_full[0]
+                sep_vec=bert_embedding_full[-1]
+
                 split_cap=cap.split()
                 tokenized_cap=self.tokenizer.tokenize(cap)
                 tokens_embedding = []
@@ -156,11 +159,14 @@ class Decoder(nn.Module):
                                     break                            
 
                 cap_embedding = torch.stack(tokens_embedding)
+                cap_embedding = torch.cat((cls_vec.unsqueeze(0),cap_embedding),dim=0)
+                cap_embedding = torch.cat((cap_embedding,sep_vec.unsqueeze(0)),dim=0)
                 zeros_vector = torch.zeros(1,768).to(self.device)
                 for cap_len in range(len(split_cap)-1,max_dec_len):
                     cap_embedding=torch.cat((cap_embedding,zeros_vector),dim=0)
                 embeddings.append(cap_embedding)
             embeddings = torch.stack(embeddings)
+            
         # init hidden state
         avg_enc_out = encoder_out.mean(dim=1)
         h = self.h_lin(avg_enc_out)
