@@ -36,6 +36,7 @@ if __name__=="__main__":
     vocab.add_word('<start>') # 1
     vocab.add_word('<end>') # 2
     vocab.add_word('<unk>') # 3
+    vocab.add_word('.')     #4
     for i, word in enumerate(words):
         vocab.add_word(word)
 

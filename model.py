@@ -101,7 +101,6 @@ class Decoder(nn.Module):
 
         encoder_out = encoder_out.view(batch_size, -1, encoder_dim)
         num_pixels = encoder_out.size(1)
-
         # load bert or regular embeddings
         if not self.use_bert:
             embeddings = self.embedding(encoded_captions)
@@ -110,31 +109,30 @@ class Decoder(nn.Module):
         elif self.use_bert:
             embeddings = []
             for cap_idx in encoded_captions:
+                cap=''
+                for word_idx in cap_idx:
+                    if word_idx<4:
+                        continue
+                    w=self.vocab.idx2word[word_idx.item()]
+                    cap+=w+" "
                 
-                # padd caption to correct size
-                while len(cap_idx) < max_dec_len:
-                    cap_idx.append(PAD)
-                    
-                cap = ' '.join([self.vocab.idx2word[word_idx.item()] for word_idx in cap_idx])
-                cap = u'[CLS] '+cap
-                
-                tokenized_cap = self.tokenizer.tokenize(cap)                
-                indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokenized_cap)
-                tokens_tensor = torch.tensor([indexed_tokens]).to(self.device)
-
+                sample_encodings = self.tokenizer(cap, truncation=True,max_length=256, padding=True)
+                input_ids = torch.LongTensor(sample_encodings['input_ids']).unsqueeze(0).to(self.device)
+                attention_mask = torch.LongTensor(sample_encodings['attention_mask']).unsqueeze(0).to(self.device)
                 with torch.no_grad():
-                    output=self.bert_model(tokens_tensor)
+                    output = self.bert_model(input_ids, attention_mask=attention_mask)
 
                 bert_embedding = output['last_hidden_state'].squeeze(0)
                 
-                split_cap = cap.split()
+                split_cap=cap.split()
+                tokenized_cap=self.tokenizer.tokenize(cap)
                 tokens_embedding = []
                 j = 0
-
+                
                 for full_token in split_cap:
                     curr_token = ''
                     x = 0
-                    for i,_ in enumerate(tokenized_cap[1:]): # disregard CLS
+                    for i,_ in enumerate(tokenized_cap):
                         token = tokenized_cap[i+j]
                         piece_embedding = bert_embedding[i+j]
                         
@@ -158,10 +156,11 @@ class Decoder(nn.Module):
                                     break                            
 
                 cap_embedding = torch.stack(tokens_embedding)
+                zeros_vector = torch.zeros(1,768).to(self.device)
+                for cap_len in range(len(split_cap)-1,max_dec_len):
+                    cap_embedding=torch.cat((cap_embedding,zeros_vector),dim=0)
                 embeddings.append(cap_embedding)
-  
             embeddings = torch.stack(embeddings)
-
         # init hidden state
         avg_enc_out = encoder_out.mean(dim=1)
         h = self.h_lin(avg_enc_out)

@@ -31,9 +31,9 @@ import argparse
 def args_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode',type=str,required=True)
-    parser.add_argument('--use_bert',type=bool,default=False)
-    parser.add_argument('--from_checkpoint',type=bool,default=False)
-    parser.add_argument('--n_epochs',type=int,default=4)
+    parser.add_argument('--use_bert', action='store_true')
+    parser.add_argument('--from_checkpoint', action='store_true')
+    parser.add_argument('--n_epochs',type=int,default=30)
     parser.add_argument('--batch_size',type=int,default=32)
     args = parser.parse_args()
     return args
@@ -245,6 +245,7 @@ def validate(args,encoder,decoder,val_loader,criterion):
 
 if __name__=="__main__":
     args = args_parser()
+    
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # hyperparams
@@ -263,8 +264,8 @@ if __name__=="__main__":
     train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
     val_dataset=Dataset(df_path="dataset/df_val.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=False)
-    val_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size,shuffle=False)
 
     criterion = nn.CrossEntropyLoss().to(device)
 
@@ -272,7 +273,7 @@ if __name__=="__main__":
     if args.from_checkpoint:
 
         encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-        decoder = Decoder(vocab, use_bert=args.use_bert).to(device)
+        decoder = Decoder(vocab, use_bert=args.use_bert,device=device).to(device)
 
         if args.use_bert:
             print('Pre-Trained BERT Model')
@@ -289,7 +290,7 @@ if __name__=="__main__":
         decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
     else:
         encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-        decoder = Decoder(vocab, use_bert=args.use_bert,device=device).to(device)
+        decoder = Decoder(vocab, use_bert=args.use_bert, device=device).to(device)
         decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
     
     if args.mode=="train":
