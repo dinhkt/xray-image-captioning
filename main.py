@@ -92,18 +92,18 @@ def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
             decoder_optimizer.step()
 
             losses.update(loss.item(), sum(decode_lengths))
-
+        print("Epoch {} loss: {}".format(epoch,losses.avg))
         torch.save({
             'epoch': epoch,
             'model_state_dict': decoder.state_dict(),
             'optimizer_state_dict': decoder_optimizer.state_dict(),
-            'loss': loss,
+            'loss': losses.avg,
             }, './checkpoints/decoder_epoch'+str(epoch+1))
 
         torch.save({
             'epoch': epoch,
             'model_state_dict': encoder.state_dict(),
-            'loss': loss,
+            'loss': losses.avg,
             }, './checkpoints/encoder_epoch'+str(epoch+1))
 
         print('epoch {} checkpoint saved'.format(epoch))
@@ -115,13 +115,13 @@ def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
     torch.save({
         'model_state_dict': decoder.state_dict(),
         'optimizer_state_dict': decoder_optimizer.state_dict(),
-        'loss': loss,
+        'loss': losses.avg,
         }, './checkpoints/decoder_'+model_type)
 
     torch.save({
         'epoch': epoch,
         'model_state_dict': encoder.state_dict(),
-        'loss': loss,
+        'loss': losses.avg,
         }, './checkpoints/encoder_'+model_type)
     print("Completed training...")  
 
