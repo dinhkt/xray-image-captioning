@@ -1,4 +1,4 @@
-# Xray image caption generation
+# Xray image caption generator
 
 1. Create conda environment:
 ```
@@ -9,6 +9,9 @@
 2. Download dataset and extract all images to dataset/images folder
   Download from here: https://drive.google.com/file/d/16yDwrINwgOVPUgWbs3JdHqioPo1NsTrt/view?usp=sharing
 3. Train the model:
+
 ```
-  python main.py --mode=train --use_bert=True --batch_size=32 --n_epochs=10
+  # pass --use_bert to use embeddings vectors from pretrained Biobert
+  
+  python main.py --mode=train --use_bert --batch_size=32 --n_epochs=40
 ```
