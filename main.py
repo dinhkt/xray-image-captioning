@@ -6,8 +6,6 @@ Link: https://github.com/parksunwoo/show_attend_and_tell_pytorch/blob/master/pre
 2. sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning
 Link: https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning
 
-This script has the Encoder and Decoder models and training/validation scripts. 
-Edit the parameters sections of this file to specify which models to load/run
 ''' 
 
 # coding: utf-8
@@ -33,16 +31,12 @@ def args_parser():
     parser.add_argument('--mode',type=str,required=True)
     parser.add_argument('--use_bert', action='store_true')
     parser.add_argument('--from_checkpoint', action='store_true')
-    parser.add_argument('--n_epochs',type=int,default=30)
-    parser.add_argument('--batch_size',type=int,default=32)
+    parser.add_argument('--start_epoch',type=int,default=1)
+    parser.add_argument('--n_epochs',type=int,default=50)
+    parser.add_argument('--batch_size',type=int,default=8)
     args = parser.parse_args()
     return args
 
-# vocab indices
-PAD = 0
-START = 1
-END = 2
-UNK = 3
 # loss
 class loss_obj(object):
     def __init__(self):
@@ -62,6 +56,11 @@ class loss_obj(object):
 
 def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
     print("Started training...")
+
+    if args.use_bert:
+        model_type="bert"
+    else:
+        model_type="baseline"
     for epoch in tqdm(range(args.n_epochs)):
         decoder.train()
         encoder.eval() # encoder doesn't need training
@@ -98,20 +97,16 @@ def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
             'model_state_dict': decoder.state_dict(),
             'optimizer_state_dict': decoder_optimizer.state_dict(),
             'loss': losses.avg,
-            }, './checkpoints/decoder_epoch'+str(epoch+1))
+            }, './checkpoints/decoder_'+model_type+'_epoch'+str(epoch+1))
 
         torch.save({
             'epoch': epoch,
             'model_state_dict': encoder.state_dict(),
             'loss': losses.avg,
-            }, './checkpoints/encoder_epoch'+str(epoch+1))
+            }, './checkpoints/encoder_'+model_type+'_epoch'+str(epoch+1))
 
         print('epoch {} checkpoint saved'.format(epoch))
 
-    if args.use_bert==True:
-        model_type="bert"
-    else:
-        model_type="baseline"
     torch.save({
         'model_state_dict': decoder.state_dict(),
         'optimizer_state_dict': decoder_optimizer.state_dict(),
@@ -140,8 +135,6 @@ def print_sample(hypotheses, references, test_references, k, losses):
     print("BLEU-2: "+str(bleu_2))
     print("BLEU-3: "+str(bleu_3))
     print("BLEU-4: "+str(bleu_4))
-
-    #img_dim = 336 # 14*24
     
     hyp_sentence = []
     for word_idx in hypotheses[k]:
@@ -154,39 +147,16 @@ def print_sample(hypotheses, references, test_references, k, losses):
     print('Hypotheses: '+" ".join(hyp_sentence))
     print('References: '+" ".join(ref_sentence))
         
-    # img = imgs[0][k] 
-    # imageio.imwrite('img.jpg', img)
-  
-    # if show_att:
-    #     image = Image.open('img.jpg')
-    #     image = image.resize([img_dim, img_dim], Image.LANCZOS)
-    #     for t in range(len(hyp_sentence)):
-
-    #         plt.subplot(np.ceil(len(hyp_sentence) / 5.), 5, t + 1)
-
-    #         plt.text(0, 1, '%s' % (hyp_sentence[t]), color='black', backgroundcolor='white', fontsize=12)
-    #         plt.imshow(image)
-    #         current_alpha = alphas[0][t, :].detach().numpy()
-    #         alpha = skimage.transform.resize(current_alpha, [img_dim, img_dim])
-    #         if t == 0:
-    #             plt.imshow(alpha, alpha=0)
-    #         else:
-    #             plt.imshow(alpha, alpha=0.7)
-    #         plt.axis('off')
-    # else:
-    #     img = imageio.imread('img.jpg')
-    #     plt.imshow(img)
-    #     plt.axis('off')
-    #     plt.show()
-
-
 def validate(args,encoder,decoder,val_loader,criterion):
 
     references = [] 
     test_references = []
     hypotheses = [] 
-    # all_imgs = []
-    # all_alphas = []
+
+    PAD = 0
+    START = 1
+    END = 2
+    UNK = 3
 
     print("Started validation...")
     decoder.eval()
@@ -196,9 +166,6 @@ def validate(args,encoder,decoder,val_loader,criterion):
 
     # Batches
     for i, (img1s,img2s, caps,cap_lens) in enumerate(tqdm(val_loader)):
-
-        # imgs_jpg = img1s.numpy() 
-        # imgs_jpg = np.swapaxes(np.swapaxes(imgs_jpg, 1, 3), 1, 2)
         
         # Forward prop.
         imgs = encoder(img1s.to(device),img2s.to(device))
@@ -218,7 +185,7 @@ def validate(args,encoder,decoder,val_loader,criterion):
 
          # References
         for j in range(targets.shape[0]):
-            img_caps = targets[j].tolist() # validation dataset only has 1 unique caption per img
+            img_caps = targets[j].tolist() 
             clean_cap = [w for w in img_caps if w not in [PAD, START, END]]  # remove pad, start, and end
             img_captions = list(map(lambda c: clean_cap,img_caps))
             test_references.append(clean_cap)
@@ -235,10 +202,6 @@ def validate(args,encoder,decoder,val_loader,criterion):
         preds = temp_preds
         hypotheses.extend(preds)
         
-        # if i == 0:
-        #     all_alphas.append(alphas)
-        #     all_imgs.append(imgs_jpg)
-
     print("Completed validation...")
     print_sample(hypotheses, references, test_references,1, losses)
 
@@ -258,44 +221,53 @@ if __name__=="__main__":
     # load data
     transforms_ = transforms.Compose([transforms.ToTensor(),
                     transforms.Resize([512,512]), 
-                    transforms.RandomHorizontalFlip(),
                     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) ])
 
     train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
     val_dataset=Dataset(df_path="dataset/df_val.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size,shuffle=False)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size,shuffle=True)
 
     criterion = nn.CrossEntropyLoss().to(device)
 
     ### Init model
-    if args.from_checkpoint:
+    if args.mode=="train":
+        if args.from_checkpoint:
+            encoder = Encoder(ckpt_path="model.pth.tar").to(device)
+            decoder = Decoder(vocab, use_bert=args.use_bert,device=device).to(device)
 
+            if args.use_bert:
+                print('Load checkpoint BERT Model')
+                encoder_checkpoint = torch.load('./checkpoints/encoder_bert'+'_epoch'+str(args.start_epoch))
+                decoder_checkpoint = torch.load('./checkpoints/decoder_bert'+'_epoch'+str(args.start_epoch))
+            else:
+                print('Load checkpoint Baseline Model')
+                encoder_checkpoint = torch.load('./checkpoints/encoder_baseline'+'_epoch'+str(args.start_epoch))
+                decoder_checkpoint = torch.load('./checkpoints/decoder_baseline'+'_epoch'+str(args.start_epoch))
+
+            encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
+            decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
+            decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
+            decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
+        else:
+            encoder = Encoder(ckpt_path="model.pth.tar").to(device)
+            decoder = Decoder(vocab, use_bert=args.use_bert, device=device).to(device)
+            decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
+    
+        train(args,encoder,decoder,train_loader,criterion,decoder_optimizer)
+
+    elif args.mode=="val":
         encoder = Encoder(ckpt_path="model.pth.tar").to(device)
         decoder = Decoder(vocab, use_bert=args.use_bert,device=device).to(device)
-
         if args.use_bert:
-            print('Pre-Trained BERT Model')
+            print('Load trained BERT Model')
             encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
             decoder_checkpoint = torch.load('./checkpoints/decoder_bert')
         else:
-            print('Pre-Trained Baseline Model')
+            print('Load trained Baseline Model')
             encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
-
-        encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
-        decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
-        decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
-        decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
-    else:
-        encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-        decoder = Decoder(vocab, use_bert=args.use_bert, device=device).to(device)
-        decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
-    
-    if args.mode=="train":
-        train(args,encoder,decoder,train_loader,criterion,decoder_optimizer)
-    elif args.mode=="val":
+            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')        
         validate(args,encoder,decoder,val_loader,criterion)
     else:
         assert("mode should be train or val")

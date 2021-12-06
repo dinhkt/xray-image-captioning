@@ -15,3 +15,7 @@
   
   python main.py --mode=train --use_bert --batch_size=32 --n_epochs=40
 ```
+4. Validate model:
+```
+  python main.py --mode=val --use_bert
+```

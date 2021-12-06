@@ -3,11 +3,7 @@ import torch.nn as nn
 from chexnet import DenseNet121
 from collections import OrderedDict
 from transformers import  AutoTokenizer,AutoModel
-# vocab indices
-PAD = 0
-START = 1
-END = 2
-UNK = 3
+
 #####################
 # Encoder ChexNet
 #####################
