@@ -99,12 +99,6 @@ def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
             'loss': losses.avg,
             }, './checkpoints/decoder_'+model_type+'_epoch'+str(epoch+1))
 
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': encoder.state_dict(),
-            'loss': losses.avg,
-            }, './checkpoints/encoder_'+model_type+'_epoch'+str(epoch+1))
-
         print('epoch {} checkpoint saved'.format(epoch))
 
     torch.save({
@@ -239,11 +233,11 @@ if __name__=="__main__":
 
             if args.use_bert:
                 print('Load checkpoint BERT Model')
-                encoder_checkpoint = torch.load('./checkpoints/encoder_bert'+'_epoch'+str(args.start_epoch))
+                encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
                 decoder_checkpoint = torch.load('./checkpoints/decoder_bert'+'_epoch'+str(args.start_epoch))
             else:
                 print('Load checkpoint Baseline Model')
-                encoder_checkpoint = torch.load('./checkpoints/encoder_baseline'+'_epoch'+str(args.start_epoch))
+                encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
                 decoder_checkpoint = torch.load('./checkpoints/decoder_baseline'+'_epoch'+str(args.start_epoch))
 
             encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
@@ -267,7 +261,10 @@ if __name__=="__main__":
         else:
             print('Load trained Baseline Model')
             encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')        
+            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')  
+                 
+        encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
+        decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
         validate(args,encoder,decoder,val_loader,criterion)
     else:
         assert("mode should be train or val")
