@@ -40,10 +40,7 @@ def args_parser():
     return args
 
 
-if use_chexnet:
-    Encoder = ChexNetEncoder
-else:
-    Encoder = ResNetEncoder
+
     
 
 # vocab indices
@@ -254,9 +251,11 @@ def validate(args,encoder,decoder,val_loader,criterion):
 
 if __name__=="__main__":
     args = args_parser()
+    torch.cuda.empty_cache()
+
     
     # Device configuration
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     # hyperparams
     grad_clip = 5.
     decoder_lr = 0.0004
@@ -278,10 +277,14 @@ if __name__=="__main__":
     criterion = nn.CrossEntropyLoss().to(device)
 
     ### Init model
+    
+    if args.use_chexnet:
+        encoder = ChexNetEncoder(ckpt_path="model.pth.tar").to(device)
+    else:
+        encoder = ResNetEncoder().to(device)
+        
     if args.from_checkpoint:
-
-        encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-        decoder = Decoder(vocab, use_bert=args.use_bert,device=device).to(device)
+        decoder = Decoder(vocab, args=args, device=device).to(device)
 
         if args.use_bert:
             print('Pre-Trained BERT Model')
@@ -297,8 +300,7 @@ if __name__=="__main__":
         decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
         decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
     else:
-        encoder = Encoder(ckpt_path="model.pth.tar").to(device)
-        decoder = Decoder(vocab, use_bert=args.use_bert, device=device).to(device)
+        decoder = Decoder(vocab, args=args, device=device).to(device)
         decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
     
     if args.mode=="train":

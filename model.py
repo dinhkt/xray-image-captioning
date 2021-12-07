@@ -3,6 +3,8 @@ import torch.nn as nn
 from chexnet import DenseNet121
 from collections import OrderedDict
 from transformers import  AutoTokenizer,AutoModel
+import torchvision.models as models
+
 # vocab indices
 PAD = 0
 START = 1
@@ -15,13 +17,15 @@ UNK = 3
 #####################
 class ResNetEncoder(nn.Module):
     def __init__(self):
-        super(Encoder, self).__init__()
+        super(ResNetEncoder, self).__init__()
         resnet = models.resnet101(pretrained=True)
         self.resnet = nn.Sequential(*list(resnet.children())[:-2])
         self.adaptive_pool = nn.AdaptiveAvgPool2d((14, 14))
 
-    def forward(self, images):
-        out = self.adaptive_pool(self.resnet(images))
+    def forward(self, image1,image2):
+        out1 = self.adaptive_pool(self.resnet(image1))
+        out2 = self.adaptive_pool(self.resnet(image2))
+        out = torch.cat((out1,out2),dim=1) 
         # batch_size, img size, imgs size, 2048
         out = out.permute(0, 2, 3, 1)
         return out
@@ -32,11 +36,12 @@ class ResNetEncoder(nn.Module):
 # Encoder ChexNet
 #####################
 class ChexNetEncoder(nn.Module):
-    def __init__(self,ckpt_path):
-        super(Encoder, self).__init__()
+    def __init__(self, ckpt_path):
+        super(ChexNetEncoder, self).__init__()
         self.chexnet = DenseNet121()
         checkpoint = torch.load(ckpt_path)
         fixed_state_dict = OrderedDict()
+        
         for k, v in checkpoint["state_dict"].items():
             k = k.replace("module.", "") # removing ‘module.’ from key
             k = k.replace( '.norm.1', '.norm1')
@@ -44,6 +49,7 @@ class ChexNetEncoder(nn.Module):
             k = k.replace( '.norm.2', '.norm2')
             k = k.replace( '.conv.2', '.conv2')    
             fixed_state_dict[k] = v  
+            
         self.chexnet.load_state_dict(fixed_state_dict)
         self.conv_layers= self.chexnet.densenet121.features
         for param in self.conv_layers.parameters():
@@ -57,29 +63,35 @@ class ChexNetEncoder(nn.Module):
         out = torch.cat((out1,out2),dim=1) 
         # batch_size, img size, imgs size, 2048
         out = out.permute(0, 2, 3, 1)
+
         return out
 
 ####################
 # Attention Decoder
 ####################
 class Decoder(nn.Module):
-    def __init__(self, vocab,device, use_bert=False ):
+    def __init__(self, vocab,device, args ):
         super(Decoder, self).__init__()
-        self.encoder_dim = 2048
         self.attention_dim = 512
-        self.use_bert = use_bert
+        self.use_bert = args.use_bert
         self.vocab=vocab
-        if use_bert:
+        
+        if args.use_bert:
             self.embed_dim = 768
         else:
             self.embed_dim = 512
+            
+        if args.use_chexnet:
+            self.encoder_dim = 2048
+        else:
+            self.encoder_dim = 4096
 
         self.decoder_dim = 512
         self.vocab_size = len(vocab)
         self.dropout = 0.5
         
         # soft attention
-        self.enc_att = nn.Linear(2048, 512)
+        self.enc_att = nn.Linear(self.encoder_dim, 512)
         self.dec_att = nn.Linear(512, 512)
         self.att = nn.Linear(512, 1)
         self.relu = nn.ReLU()
@@ -98,7 +110,7 @@ class Decoder(nn.Module):
         self.fc.bias.data.fill_(0)
         self.fc.weight.data.uniform_(-0.1, 0.1)
         self.device=device
-        if not use_bert:
+        if not self.use_bert:
             self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
             self.embedding.weight.data.uniform_(-0.1, 0.1)
             for p in self.embedding.parameters():
