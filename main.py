@@ -21,7 +21,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-from model import Encoder,Decoder
+from model import Decoder, ResNetEncoder, ChexNetEncoder
 from dataset import Dataset
 from build_vocab import Vocabulary
 import torchvision.transforms as transforms
@@ -32,11 +32,19 @@ def args_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode',type=str,required=True)
     parser.add_argument('--use_bert', action='store_true')
+    parser.add_argument('--use_chexnet', action='store_true')
     parser.add_argument('--from_checkpoint', action='store_true')
     parser.add_argument('--n_epochs',type=int,default=30)
     parser.add_argument('--batch_size',type=int,default=32)
     args = parser.parse_args()
     return args
+
+
+if use_chexnet:
+    Encoder = ChexNetEncoder
+else:
+    Encoder = ResNetEncoder
+    
 
 # vocab indices
 PAD = 0
@@ -240,7 +248,8 @@ def validate(args,encoder,decoder,val_loader,criterion):
         #     all_imgs.append(imgs_jpg)
 
     print("Completed validation...")
-    print_sample(hypotheses, references, test_references,1, losses)
+    for i in range(10):
+        print_sample(hypotheses, references, test_references, i, losses)
 
 
 if __name__=="__main__":
@@ -258,7 +267,6 @@ if __name__=="__main__":
     # load data
     transforms_ = transforms.Compose([transforms.ToTensor(),
                     transforms.Resize([512,512]), 
-                    transforms.RandomHorizontalFlip(),
                     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) ])
 
     train_dataset=Dataset(df_path="dataset/df_train.pkl",vocab=vocab,transform=transforms_,max_cap_len=60)

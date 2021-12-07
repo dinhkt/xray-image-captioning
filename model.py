@@ -8,10 +8,30 @@ PAD = 0
 START = 1
 END = 2
 UNK = 3
+
+
+#####################
+# Encoder RASNET CNN
+#####################
+class ResNetEncoder(nn.Module):
+    def __init__(self):
+        super(Encoder, self).__init__()
+        resnet = models.resnet101(pretrained=True)
+        self.resnet = nn.Sequential(*list(resnet.children())[:-2])
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((14, 14))
+
+    def forward(self, images):
+        out = self.adaptive_pool(self.resnet(images))
+        # batch_size, img size, imgs size, 2048
+        out = out.permute(0, 2, 3, 1)
+        return out
+    
+    
+    
 #####################
 # Encoder ChexNet
 #####################
-class Encoder(nn.Module):
+class ChexNetEncoder(nn.Module):
     def __init__(self,ckpt_path):
         super(Encoder, self).__init__()
         self.chexnet = DenseNet121()
