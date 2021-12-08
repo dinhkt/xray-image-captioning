@@ -251,11 +251,12 @@ def validate(args,encoder,decoder,val_loader,criterion):
 
 if __name__=="__main__":
     args = args_parser()
-    torch.cuda.empty_cache()
 
     
     # Device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.cuda.empty_cache()
+
     # hyperparams
     grad_clip = 5.
     decoder_lr = 0.0004
@@ -277,15 +278,14 @@ if __name__=="__main__":
     criterion = nn.CrossEntropyLoss().to(device)
 
     ### Init model
-    
+
     if args.use_chexnet:
         encoder = ChexNetEncoder(ckpt_path="model.pth.tar").to(device)
     else:
         encoder = ResNetEncoder().to(device)
+    decoder = Decoder(vocab, args=args, device=device).to(device)
         
     if args.from_checkpoint:
-        decoder = Decoder(vocab, args=args, device=device).to(device)
-
         if args.use_bert:
             print('Pre-Trained BERT Model')
             encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
@@ -294,13 +294,11 @@ if __name__=="__main__":
             print('Pre-Trained Baseline Model')
             encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
             decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
-
         encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
         decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
         decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
         decoder_optimizer.load_state_dict(decoder_checkpoint['optimizer_state_dict'])
     else:
-        decoder = Decoder(vocab, args=args, device=device).to(device)
         decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
     
     if args.mode=="train":
