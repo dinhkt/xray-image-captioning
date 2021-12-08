@@ -287,13 +287,24 @@ if __name__=="__main__":
         
     if args.from_checkpoint:
         if args.use_bert:
-            print('Pre-Trained BERT Model')
-            encoder_checkpoint = torch.load('./checkpoints/encoder_bert')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_bert')
+            if args.use_chexnet:
+                print('Pre-Trained BERT ChexNet Model')
+                encoder_checkpoint = torch.load('./checkpoints/chexnet_encoder_bert')
+                decoder_checkpoint = torch.load('./checkpoints/chexnet_decoder_bert')
+            else:
+                print('Pre-Trained BERT ResNet Model')
+                encoder_checkpoint = torch.load('./checkpoints/resnet_encoder_bert')
+                decoder_checkpoint = torch.load('./checkpoints/resnet_decoder_bert')
         else:
-            print('Pre-Trained Baseline Model')
-            encoder_checkpoint = torch.load('./checkpoints/encoder_baseline')
-            decoder_checkpoint = torch.load('./checkpoints/decoder_baseline')
+            if args.use_chexnet:
+                print('Pre-Trained BERT ChexNet Model')
+                encoder_checkpoint = torch.load('./checkpoints/chexnet_encoder_baseline')
+                decoder_checkpoint = torch.load('./checkpoints/chexnet_decoder_baseline')
+            else:
+                print('Pre-Trained baseline ResNet Model')
+                encoder_checkpoint = torch.load('./checkpoints/resnet_encoder_baseline')
+                decoder_checkpoint = torch.load('./checkpoints/resnet_decoder_baseline')
+                
         encoder.load_state_dict(encoder_checkpoint['model_state_dict'])
         decoder_optimizer = torch.optim.Adam(params=decoder.parameters(),lr=decoder_lr)
         decoder.load_state_dict(decoder_checkpoint['model_state_dict'])
