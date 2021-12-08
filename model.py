@@ -19,6 +19,9 @@ class ResNetEncoder(nn.Module):
     def __init__(self):
         super(ResNetEncoder, self).__init__()
         resnet = models.resnet101(pretrained=True)
+        # Freeze parameters
+        for param in resnet.parameters():
+            param.requires_grad_(False)
         self.resnet = nn.Sequential(*list(resnet.children())[:-2])
         self.adaptive_pool = nn.AdaptiveAvgPool2d((14, 14))
 
