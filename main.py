@@ -255,7 +255,7 @@ if __name__=="__main__":
 
     
     # Device configuration
-    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # hyperparams
     grad_clip = 5.
     decoder_lr = 0.0004
