@@ -117,17 +117,27 @@ def train(args,encoder,decoder,train_loader,criterion,decoder_optimizer):
         model_type="bert"
     else:
         model_type="baseline"
+
+    decoder_file_path=""
+    encoder_file_path=""
+    if args.use_chexnet==True:
+        decoder_file_path="./checkpoints/chexnet_decoder_"+model_type
+        encoder_file_path="./checkpoints/chexnet_encoder_"+model_type
+    else:
+        decoder_file_path="./checkpoints/resnet_decoder_"+model_type
+        encoder_file_path="./checkpoints/resnet_encoder_"+model_type
+
     torch.save({
         'model_state_dict': decoder.state_dict(),
         'optimizer_state_dict': decoder_optimizer.state_dict(),
         'loss': loss,
-        }, './checkpoints/decoder_'+model_type)
+        }, decoder_file_path)
 
     torch.save({
         'epoch': epoch,
         'model_state_dict': encoder.state_dict(),
         'loss': loss,
-        }, './checkpoints/encoder_'+model_type)
+        }, encoder_file_path)
     print("Completed training...")  
 
 #################
