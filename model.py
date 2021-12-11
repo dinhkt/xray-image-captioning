@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 from chexnet import DenseNet121
@@ -14,7 +15,7 @@ UNK = 3
 
 #####################
 # Encoder RASNET CNN
-#####################
+# ####################
 class ResNetEncoder(nn.Module):
     def __init__(self):
         super(ResNetEncoder, self).__init__()
@@ -34,10 +35,10 @@ class ResNetEncoder(nn.Module):
         return out
     
     
-    
+
 #####################
 # Encoder ChexNet
-#####################
+# ####################
 class ChexNetEncoder(nn.Module):
     def __init__(self, ckpt_path):
         super(ChexNetEncoder, self).__init__()
@@ -71,23 +72,20 @@ class ChexNetEncoder(nn.Module):
 
 ####################
 # Attention Decoder
-####################
+# ###################
 class Decoder(nn.Module):
-    def __init__(self, vocab,device, args ):
+    def __init__(self, vocab,device, use_bert=False ):
         super(Decoder, self).__init__()
         self.attention_dim = 512
-        self.use_bert = args.use_bert
+        self.use_bert = use_bert
         self.vocab=vocab
         
-        if args.use_bert:
+        if use_bert:
             self.embed_dim = 768
         else:
             self.embed_dim = 512
-            
-        if args.use_chexnet:
-            self.encoder_dim = 2048
-        else:
-            self.encoder_dim = 4096
+        
+        self.encoder_dim = 4096
 
         self.decoder_dim = 512
         self.vocab_size = len(vocab)
