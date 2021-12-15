@@ -1,7 +1,7 @@
 # Xray image caption generator
 
 I. Model Architecture
-![Alt text](https://ibb.co/rkmcCP2 "Model architecture")
+![Alt text](model_architecture.png?raw=true "Model architecture")
 
 II. Running step 
 1. Create conda environment:
