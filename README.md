@@ -1,5 +1,9 @@
 # Xray image caption generator
 
+I. Model Architecture
+![Alt text](https://ibb.co/rkmcCP2 "Model architecture")
+
+II. Running step 
 1. Create conda environment:
 ```
     conda create -n xray_caption python=3.8
